@@ -11,8 +11,7 @@ TIMEOUT_SEC = 600  # increase this number if you have a large number of points o
 def _post(base_url: str, path: str, payload: dict):
     url = f"{base_url}{path}"
     r = requests.post(url, json=payload, timeout=TIMEOUT_SEC)
-    if r.status_code == 404:
-        return None, r
+
     if not r.ok:
         print("\n=== VALHALLA ERROR ===")
         print("URL:", url)
@@ -20,6 +19,7 @@ def _post(base_url: str, path: str, payload: dict):
         print("Response:", r.text[:2000])
         print("Payload sizes: sources =", len(payload.get("sources", [])),
               "targets =", len(payload.get("targets", [])))
+        # print first 3 coords to help debug
         if payload.get("sources"):
             print("Sample source[0]:", payload["sources"][0])
         if payload.get("targets"):
@@ -28,7 +28,61 @@ def _post(base_url: str, path: str, payload: dict):
 
     r.raise_for_status()
     return r.json(), r
+_post(base_url, path, payload, timeout=120):
+    import requests
+    url = base_url + path
+    r = requests.post(url, json=payload, timeout=timeout)
+    if not r.ok:
+        print("REQUEST URL:", url)
+        print("STATUS:", r.status_code)
+        print("RESPONSE:", r.text[:2000])
+        # optional: print a tiny summary of payload size
+        print("payload sizes - sources:", len(payload.get("sources", [])), "targets:", len(payload.get("targets", [])))
+    r.raise_for_status()
+    return r.json(), r
+def _post(base_url: str, path: str, payload: dict):
+    url = f"{base_url}{path}"
+    r = requests.post(url, json=payload, timeout=TIMEOUT_SEC)
+    if r.status_code == 404:
+        return None, r
+    r.raise_for_status()
+    return r.json(), r
 
+def call_matrix(base_url, locs, costing="auto", chunk_size=25):
+    """
+    Call Valhalla /sources_to_targets in chunks to avoid 400 Bad Request for large payloads.
+    Returns a full N x N matrix (list of lists) of Valhalla cells.
+    """
+    clean_locs = [{"lat": float(x["lat"]), "lon": float(x["lon"])} for x in locs]
+    n = len(clean_locs)
+
+    full = [[None for _ in range(n)] for _ in range(n)]
+    targets = clean_locs
+
+    for i in range(0, n, chunk_size):
+        src_chunk = clean_locs[i:i + chunk_size]
+        payload_stt = {
+            "sources": src_chunk,
+            "targets": targets,
+            "costing": costing
+        }
+
+        data, resp = _post(base_url, "/sources_to_targets", payload_stt)
+        stt = data.get("sources_to_targets", [])
+        if not stt:
+            raise RuntimeError(f"Empty sources_to_targets returned for sources {i}:{i+chunk_size}")
+
+        for r, row in enumerate(stt):
+            for cell in row:
+                from_idx = i + int(cell["from_index"])
+                to_idx = int(cell["to_index"])
+                full[from_idx][to_idx] = cell
+
+    missing = sum(1 for r in full for c in r if c is None)
+    if missing:
+        raise RuntimeError(f"Matrix build incomplete: {missing} cells missing")
+
+    return full
 def call_matrix(base_url: str, locs: list[dict]) -> list:
     """
     Try Valhalla matrix endpoints in common order:

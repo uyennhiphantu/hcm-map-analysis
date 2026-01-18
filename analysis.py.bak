@@ -1,0 +1,28 @@
+import pandas as pd
+
+path = "/Users/huhuhu/gis/matrix_delta.csv"
+df = pd.read_csv(path)
+
+summary = {
+    "rows": len(df),
+    "null_2014_time": int(df["time_s_2014"].isna().sum()),
+    "null_2025_time": int(df["time_s_2025"].isna().sum()),
+    "avg_delta_time_s": df["delta_time_s"].dropna().mean(),
+    "avg_delta_distance_km": df["delta_distance_km"].dropna().mean(),
+    "median_delta_time_s": df["delta_time_s"].dropna().median(),
+    "median_delta_distance_km": df["delta_distance_km"].dropna().median(),
+}
+
+top_faster = (
+    df.dropna(subset=["delta_time_s"])
+      .sort_values("delta_time_s")
+      .head(10)[["src","dst","time_s_2014","time_s_2025","delta_time_s"]]
+)
+
+top_slower = (
+    df.dropna(subset=["delta_time_s"])
+      .sort_values("delta_time_s", ascending=False)
+      .head(10)[["src","dst","time_s_2014","time_s_2025","delta_time_s"]]
+)
+
+summary, top_faster, top_slower

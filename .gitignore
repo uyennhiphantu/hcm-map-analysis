@@ -1,0 +1,5 @@
+
+# Large data (do not commit)
+*.pbf
+*.tar
+custom_2025/*.tar

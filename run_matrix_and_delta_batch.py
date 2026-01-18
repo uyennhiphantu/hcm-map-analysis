@@ -130,13 +130,13 @@ def main():
     # Save results
     print("\nSaving results...")
     final_df.to_csv('matrix_2018.csv', index=False)
-    print("✅ matrix_2018.csv saved")
+    print("matrix_2018.csv saved")
     
     final_df.to_csv('matrix_2025.csv', index=False)
-    print("✅ matrix_2025.csv saved")
+    print("matrix_2025.csv saved")
     
     final_df.to_csv('matrix_delta.csv', index=False)
-    print("✅ matrix_delta.csv saved")
+    print("matrix_delta.csv saved")
     
     # Summary
     print("\n" + "="*60)

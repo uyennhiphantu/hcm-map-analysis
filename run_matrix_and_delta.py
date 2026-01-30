@@ -1,42 +1,52 @@
 import pandas as pd
 import requests
 
-POINTS_CSV = "points.csv"
+from config import (
+    VALHALLA_2018, VALHALLA_2025, COSTING,
+    POINTS_CSV, MATRIX_2018_CSV, MATRIX_2025_CSV, MATRIX_DELTA_CSV,
+    MATRIX_TIMEOUT
+)
 
-BASE_2018 = "http://localhost:8004"
-BASE_2025 = "http://localhost:8005"
+BASE_2018 = VALHALLA_2018
+BASE_2025 = VALHALLA_2025
+TIMEOUT_SEC = MATRIX_TIMEOUT
 
-TIMEOUT_SEC = 600  # increase this number if you have a large number of points or slow computing resource
 
 def _post(base_url: str, path: str, payload: dict):
     url = f"{base_url}{path}"
     r = requests.post(url, json=payload, timeout=TIMEOUT_SEC)
     if r.status_code == 404:
         return None, r
+    if not r.ok:
+        print("\n=== VALHALLA ERROR ===")
+        print("URL:", url)
+        print("HTTP:", r.status_code)
+        print("Response:", r.text[:2000])
+        print("Payload sizes: sources =", len(payload.get("sources", [])),
+              "targets =", len(payload.get("targets", [])))
+        if payload.get("sources"):
+            print("Sample source[0]:", payload["sources"][0])
+        if payload.get("targets"):
+            print("Sample target[0]:", payload["targets"][0])
+        print("=== END ERROR ===\n")
+
     r.raise_for_status()
     return r.json(), r
 
+
 def call_matrix(base_url: str, locs: list[dict]) -> list:
-    """
-    Try Valhalla matrix endpoints in common order:
-      1) /sources_to_targets  (most common)
-      2) /matrix (some wrappers)
-    Return raw matrix list[list[dict|None]]
-    """
-    # Preferred Valhalla endpoint
     payload_stt = {
         "sources": locs,
         "targets": locs,
-        "costing": "auto",
+        "costing": COSTING,
     }
 
     data, resp = _post(base_url, "/sources_to_targets", payload_stt)
     if data is None:
-        # fallback for wrappers that use /matrix + action
         payload_matrix = {
             "sources": locs,
             "targets": locs,
-            "costing": "auto",
+            "costing": COSTING,
             "action": "sources_to_targets",
         }
         data, resp = _post(base_url, "/matrix", payload_matrix)
@@ -47,16 +57,14 @@ def call_matrix(base_url: str, locs: list[dict]) -> list:
             f"Tried /sources_to_targets and /matrix. Last status={resp.status_code}"
         )
 
-    # Normalize response shape
-    # Common: {"sources_to_targets":[[...],...]}
     if isinstance(data, dict) and "sources_to_targets" in data:
         return data["sources_to_targets"]
 
-    # Some builds may return the matrix directly (rare)
     if isinstance(data, list):
         return data
 
     raise RuntimeError(f"Unexpected matrix response shape from {base_url}: {type(data)} keys={list(data.keys()) if isinstance(data, dict) else ''}")
+
 
 def matrix_to_long(m: list, year: int) -> pd.DataFrame:
     rows = []
@@ -73,21 +81,25 @@ def matrix_to_long(m: list, year: int) -> pd.DataFrame:
             })
     return pd.DataFrame(rows)
 
+
 def main():
     pts = pd.read_csv(POINTS_CSV)
     locs = [{"lat": float(r.lat), "lon": float(r.lon)} for r in pts.itertuples(index=False)]
 
-    print("Calling matrix 2018...")
+    print(f"Loaded {len(locs)} points from {POINTS_CSV}")
+    print(f"Bounding box coverage check: lat=[{pts['lat'].min():.4f}, {pts['lat'].max():.4f}], lon=[{pts['lon'].min():.4f}, {pts['lon'].max():.4f}]")
+
+    print("\nCalling matrix 2018...")
     m2018 = call_matrix(BASE_2018, locs)
     df2018 = matrix_to_long(m2018, 2018)
-    df2018.to_csv("matrix_2018.csv", index=False)
-    print("✅ matrix_2018.csv saved")
+    df2018.to_csv(MATRIX_2018_CSV, index=False)
+    print(f"✅ {MATRIX_2018_CSV} saved")
 
-    print("Calling matrix 2025...")
+    print("\nCalling matrix 2025...")
     m2025 = call_matrix(BASE_2025, locs)
     df2025 = matrix_to_long(m2025, 2025)
-    df2025.to_csv("matrix_2025.csv", index=False)
-    print("✅ matrix_2025.csv saved")
+    df2025.to_csv(MATRIX_2025_CSV, index=False)
+    print(f"✅ {MATRIX_2025_CSV} saved")
 
     df = df2018.merge(
         df2025[["src", "dst", "time_s", "distance_km"]],
@@ -100,20 +112,25 @@ def main():
     df["pct_time"] = (df["delta_time_s"] / df["time_s_2018"]) * 100
     df["pct_distance"] = (df["delta_distance_km"] / df["distance_km_2018"]) * 100
 
-    df.to_csv("matrix_delta.csv", index=False)
-    print("✅ matrix_delta.csv saved")
+    df.to_csv(MATRIX_DELTA_CSV, index=False)
+    print(f"✅ {MATRIX_DELTA_CSV} saved")
 
-    print("Null cells 2018:", df["time_s_2018"].isna().sum())
-    print("Null cells 2025:", df["time_s_2025"].isna().sum())
+    print("\n" + "="*60)
+    print("SUMMARY")
+    print("="*60)
+    print(f"Total OD pairs: {len(df)}")
+    print(f"Null cells 2018: {df['time_s_2018'].isna().sum()}")
+    print(f"Null cells 2025: {df['time_s_2025'].isna().sum()}")
 
     best_time = df.dropna(subset=["delta_time_s"]).sort_values("delta_time_s").head(10)
     best_dist = df.dropna(subset=["delta_distance_km"]).sort_values("delta_distance_km").head(10)
 
-    print("\nTop 10 faster in 2025 (most negative delta_time_s):")
-    print(best_time[["src","dst","time_s_2018","time_s_2025","delta_time_s"]])
+    print("\nTop 10 FASTER in 2025 (most negative delta_time_s):")
+    print(best_time[["src", "dst", "time_s_2018", "time_s_2025", "delta_time_s"]].to_string(index=False))
 
-    print("\nTop 10 shorter in 2025 (most negative delta_distance_km):")
-    print(best_dist[["src","dst","distance_km_2018","distance_km_2025","delta_distance_km"]])
+    print("\nTop 10 SHORTER in 2025 (most negative delta_distance_km):")
+    print(best_dist[["src", "dst", "distance_km_2018", "distance_km_2025", "delta_distance_km"]].to_string(index=False))
+
 
 if __name__ == "__main__":
     main()

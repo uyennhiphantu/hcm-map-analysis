@@ -3,10 +3,12 @@ import argparse
 import pandas as pd
 import requests
 
-# BBOX TP.HCM
-DEFAULT_MIN_LON, DEFAULT_MIN_LAT, DEFAULT_MAX_LON, DEFAULT_MAX_LAT = 106.55, 10.62, 106.90, 10.95
+from config import (
+    MIN_LON, MIN_LAT, MAX_LON, MAX_LAT,
+    VALHALLA_2025, LOCATE_TIMEOUT, POINTS_DATA_CSV
+)
 
-VALHALLA_LOCATE_URL = "http://localhost:8005/locate"  # 2025 instance
+VALHALLA_LOCATE_URL = f"{VALHALLA_2025}/locate"
 
 def haversine_m(lat1, lon1, lat2, lon2):
     R = 6371000.0
@@ -16,7 +18,7 @@ def haversine_m(lat1, lon1, lat2, lon2):
     a = math.sin(dp/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
     return 2 * R * math.asin(math.sqrt(a))
 
-def locate(lat, lon, timeout=15):
+def locate(lat, lon, timeout=LOCATE_TIMEOUT):
     payload = {"locations": [{"lat": lat, "lon": lon}]}
     r = requests.post(VALHALLA_LOCATE_URL, json=payload, timeout=timeout)
     r.raise_for_status()
@@ -74,7 +76,7 @@ def pick_snapped_point(resp):
 
     return float(slat), float(slon)
 
-def main(n=50, min_lon=DEFAULT_MIN_LON, min_lat=DEFAULT_MIN_LAT, max_lon=DEFAULT_MAX_LON, max_lat=DEFAULT_MAX_LAT, seed=42, max_snap_m=40, max_tries=8000, sleep_s=0.01):
+def main(n=50, min_lon=MIN_LON, min_lat=MIN_LAT, max_lon=MAX_LON, max_lat=MAX_LAT, seed=42, max_snap_m=40, max_tries=8000, sleep_s=0.01):
     random.seed(seed)
     accepted = []
     tries = 0
@@ -115,17 +117,17 @@ def main(n=50, min_lon=DEFAULT_MIN_LON, min_lat=DEFAULT_MIN_LAT, max_lon=DEFAULT
         )
 
     df = pd.DataFrame(accepted)
-    df.to_csv("points_data.csv", index=False)
-    print("✅ points_data.csv generated")
+    df.to_csv(POINTS_DATA_CSV, index=False)
+    print(f"✅ {POINTS_DATA_CSV} generated")
     print(df["snap_m"].describe())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate snapped points for this region")
     parser.add_argument("--n", type=int, default=50, help="Number of points to generate (default: 50)")
-    parser.add_argument("--min-lon", type=float, default=DEFAULT_MIN_LON, help=f"Minimum longitude (default: {DEFAULT_MIN_LON})")
-    parser.add_argument("--min-lat", type=float, default=DEFAULT_MIN_LAT, help=f"Minimum latitude (default: {DEFAULT_MIN_LAT})")
-    parser.add_argument("--max-lon", type=float, default=DEFAULT_MAX_LON, help=f"Maximum longitude (default: {DEFAULT_MAX_LON})")
-    parser.add_argument("--max-lat", type=float, default=DEFAULT_MAX_LAT, help=f"Maximum latitude (default: {DEFAULT_MAX_LAT})")
+    parser.add_argument("--min-lon", type=float, default=MIN_LON, help=f"Minimum longitude (default: {MIN_LON})")
+    parser.add_argument("--min-lat", type=float, default=MIN_LAT, help=f"Minimum latitude (default: {MIN_LAT})")
+    parser.add_argument("--max-lon", type=float, default=MAX_LON, help=f"Maximum longitude (default: {MAX_LON})")
+    parser.add_argument("--max-lat", type=float, default=MAX_LAT, help=f"Maximum latitude (default: {MAX_LAT})")
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
     parser.add_argument("--max-snap-m", type=float, default=40, help="Maximum snap distance in meters (default: 40)")
     parser.add_argument("--max-tries", type=int, default=8000, help="Maximum attempts to generate points (default: 8000)")

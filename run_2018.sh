@@ -1,3 +1,4 @@
+#!/bin/bash
 docker run --rm -it \
   --name valhalla_2018 \
   -p 8004:8002 \

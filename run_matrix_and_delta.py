@@ -93,13 +93,13 @@ def main():
     m2018 = call_matrix(BASE_2018, locs)
     df2018 = matrix_to_long(m2018, 2018)
     df2018.to_csv(MATRIX_2018_CSV, index=False)
-    print(f"✅ {MATRIX_2018_CSV} saved")
+    print(f" {MATRIX_2018_CSV} saved")
 
     print("\nCalling matrix 2025...")
     m2025 = call_matrix(BASE_2025, locs)
     df2025 = matrix_to_long(m2025, 2025)
     df2025.to_csv(MATRIX_2025_CSV, index=False)
-    print(f"✅ {MATRIX_2025_CSV} saved")
+    print(f" {MATRIX_2025_CSV} saved")
 
     df = df2018.merge(
         df2025[["src", "dst", "time_s", "distance_km"]],
@@ -113,7 +113,7 @@ def main():
     df["pct_distance"] = (df["delta_distance_km"] / df["distance_km_2018"]) * 100
 
     df.to_csv(MATRIX_DELTA_CSV, index=False)
-    print(f"✅ {MATRIX_DELTA_CSV} saved")
+    print(f" {MATRIX_DELTA_CSV} saved")
 
     print("\n" + "="*60)
     print("SUMMARY")
